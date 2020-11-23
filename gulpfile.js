@@ -58,7 +58,7 @@ Object.keys(Utils).forEach(function(key) {
 //
 var runTests = function() {
   return gulp
-    .src(["test/**/*_spec.js"], { read: false })
+    .src(["test/**/*_spec__del.js"], { read: false })
     .pipe(
       plugins.spawnMocha({
         R: "dot",
@@ -72,7 +72,7 @@ var runTests = function() {
 //
 // Output which version to build and to where
 //
-gulp.task("announce", function() {
+gulp.task("announce", function(done) {
   plugins.util.log(
     "Building version",
     chalk.cyan(manifest.version),
@@ -81,14 +81,15 @@ gulp.task("announce", function() {
     "as",
     chalk.cyan("dist/" + distFilename)
   );
+  done();
 });
 
 //
 // Cleans build and dist dirs
 //
-gulp.task("clean", ["announce"], function() {
-  return gulp.src(["build/**", "build/*"], { read: false }).pipe(plugins.rm({ async: false }));
-});
+gulp.task("clean", gulp.series("announce", function() {
+  return gulp.src(["build/**", "build/*"], { read: false }).pipe(plugins.rm());
+}));
 
 //
 // ESLINT the javascript (BEFORE uglifier ran over it)
@@ -110,7 +111,7 @@ gulp.task("lint", function() {
 //
 // Optimize CSS
 //
-gulp.task("optimizeCss", ["clean"], function() {
+gulp.task("optimizeCss", gulp.series( function() {
   // Optimize main options.css
   gulp
     .src(
@@ -133,13 +134,13 @@ gulp.task("optimizeCss", ["clean"], function() {
     .pipe(plugins.cssnano())
     .pipe(plugins.replaceTask(replaceOpts))
     .pipe(gulp.dest("build/css"));
-});
+}));
 
 //
 // Build global.js
 // Sadly until I use webpack here the order is important :(
 //
-gulp.task("globalJs", ["clean"], function() {
+gulp.task("globalJs", gulp.series( function() {
   return gulp
     .src([
       "src/js/global/utils.js",
@@ -158,13 +159,13 @@ gulp.task("globalJs", ["clean"], function() {
     .pipe(plugins.concat("global.js"))
     .pipe(plugins.uglify())
     .pipe(gulp.dest("build/js/"));
-});
+}));
 
 //
 // Build background.js
 // Order dependent :( -> will use webpack some day
 //
-gulp.task("backgroundJs", ["clean"], function() {
+gulp.task("backgroundJs", gulp.series( function() {
   return gulp
     .src([
       "src/js/background/alarm.js",
@@ -186,12 +187,12 @@ gulp.task("backgroundJs", ["clean"], function() {
     .pipe(plugins.concat("background.js"))
     .pipe(plugins.uglify())
     .pipe(gulp.dest("build/js/"));
-});
+}));
 
 //
 // Build fof_content.js
 //
-gulp.task("contentJs", ["clean"], function() {
+gulp.task("contentJs", gulp.series( function() {
   return gulp
     .src(["src/vendor/optimal-select/optimal-select.js", "src/js/content/*.js"])
     .pipe(plugins.replaceTask(replaceOpts))
@@ -199,13 +200,13 @@ gulp.task("contentJs", ["clean"], function() {
     .pipe(plugins.concat("fof_content.js"))
     .pipe(plugins.uglify())
     .pipe(gulp.dest("build/js/"));
-});
+}));
 
 //
 // Build options.js
 // Order dependent :( -> will use webpack some day
 //
-gulp.task("optionsJs", ["clean"], function() {
+gulp.task("optionsJs", gulp.series( function() {
   return gulp
     .src([
       "src/js/options/editor.js",
@@ -224,56 +225,57 @@ gulp.task("optionsJs", ["clean"], function() {
     .pipe(plugins.concat("options.js"))
     .pipe(plugins.uglify())
     .pipe(gulp.dest("build/js/"));
-});
+}));
 
 //
 // Build popup.js
 //
-gulp.task("popupJs", ["clean"], function() {
+gulp.task("popupJs", gulp.series( function() {
   return gulp
     .src("src/js/popup/popup.js")
     .pipe(plugins.replaceTask(replaceOpts))
     .pipe(plugins.stripDebug())
     .pipe(plugins.uglify())
     .pipe(gulp.dest("build/js"));
-});
+}));
 
 //
 // Copies files that can be copied without changes
 //
-gulp.task("copyUnchanged", ["clean"], function() {
+gulp.task("copyUnchanged", gulp.series( function(done) {
   ["fonts", "images", "vendor", "_locales"].forEach(function(dir) {
     gulp.src(["src/" + dir + "/**/*"], { nonegate: false }).pipe(gulp.dest("build/" + dir));
   });
-});
+  done();
+}));
 
 //
 // Copies HTML files and removes comment and blocks (see above)
 //
-gulp.task("copyHtml", ["copyUnchanged"], function() {
+gulp.task("copyHtml", gulp.series("copyUnchanged", function() {
   return gulp
     .src(["src/html/**/*.html", "!src/html/options/_logs_*.html"], { nonegate: false })
     .pipe(plugins.replaceTask(replaceOpts))
     .pipe(plugins.cleanhtml())
     .pipe(gulp.dest("build/html"));
-});
+}));
 
 //
 // Copies and replaces the manifest.json file (see above)
 //
-gulp.task("mangleManifest", ["clean"], function() {
+gulp.task("mangleManifest", gulp.series( function() {
   return gulp
     .src("src/manifest.json")
     .pipe(plugins.replaceTask(replaceOpts))
     .pipe(gulp.dest("build"));
-});
+}));
 
 //
 // SASS -> CSS
 // Output is expanded since it will be compressed if
 // running 'build'
 gulp.task("sass", function() {
-  gulp
+  return gulp
     .src("src/sass/*.scss")
     .pipe(plugins.sourcemaps.init())
     .pipe(plugins.sass({ outputStyle: "expanded" }).on("error", plugins.sass.logError))
@@ -285,50 +287,7 @@ gulp.task("sass", function() {
 // Watch and live compile SASS -> CSS
 //
 gulp.task("sass:watch", function() {
-  gulp.watch("src/sass/**/*.scss", ["sass"]);
-});
-
-//
-// Build a distribution
-//
-gulp.task(
-  "build",
-  [
-    "announce",
-    "clean",
-    "test",
-    "lint",
-    "copyHtml",
-    "sass",
-    "optimizeCss",
-    "globalJs",
-    "backgroundJs",
-    "contentJs",
-    "optionsJs",
-    "popupJs",
-    "mangleManifest",
-  ],
-  function() {
-    gulp
-      .src(["build/**"])
-      .pipe(plugins.zip(distFilename))
-      .pipe(gulp.dest("dist"));
-  }
-);
-
-//
-// Build a BETA
-//
-gulp.task("build-beta", ["build"], function() {
-  gulp
-    .src("src/manifest.json")
-    .pipe(plugins.replaceTask(replaceOptsBeta))
-    .pipe(gulp.dest("build"));
-
-  gulp
-    .src(["build/**"])
-    .pipe(plugins.zip(distFilename + ".beta.zip"))
-    .pipe(gulp.dest("dist"));
+  return gulp.watch("src/sass/**/*.scss", ["sass"]);
 });
 //
 // Run tests
@@ -344,7 +303,7 @@ gulp.task("test", function() {
 // Run tests through watching
 //
 gulp.task("test:watch", function() {
-  gulp.watch(["src/js/**/*.js", "test/**/*.js"], runTests);
+  return gulp.watch(["src/js/**/*.js", "test/**/*.js"], runTests);
 });
 
 //
@@ -363,10 +322,6 @@ gulp.task("webserver:start", function() {
 //
 gulp.task("webserver:stop", plugins.connect.serverClose);
 
-gulp.task("integration", ["webserver:start", "integration:run"], function() {
-  plugins.connect.serverClose();
-});
-
 // Integration testing (end-to-end)
 // Uses webdriverio as an abstraction layer over chromedriver
 //
@@ -375,7 +330,7 @@ gulp.task("integration", ["webserver:start", "integration:run"], function() {
 //
 // Specify a single spec with
 // gulp integration --grep "a\sregex"
-gulp.task("integration:run", ["webserver:start"], function() {
+gulp.task("integration:run", gulp.series("webserver:start", function() {
   var specs = [
     "./test/integration/test_setup_scene.js",
     "./test/integration/all_types_scene.js",
@@ -410,7 +365,12 @@ gulp.task("integration:run", ["webserver:start"], function() {
       },
     })
   );
-});
+}));
+
++gulp.task("integration", gulp.series("webserver:start", "integration:run", function(done) {
+  plugins.connect.serverClose();
+  done();
+}));
 
 // Watch for changes
 gulp.task("watch", function() {
@@ -425,3 +385,46 @@ gulp.task("watch", function() {
 gulp.task("default", function() {
   runTests();
 });
+
+//
+// Build a distribution
+//
+gulp.task(
+  "build",
+  gulp.series(
+    "announce",
+    "clean",
+    "test",
+    "lint",
+    "copyHtml",
+    "sass",
+    "optimizeCss",
+    "globalJs",
+    "backgroundJs",
+    "contentJs",
+    "optionsJs",
+    "popupJs",
+    "mangleManifest",
+
+  function() {
+    return gulp
+      .src(["build/**"])
+      .pipe(plugins.zip(distFilename))
+      .pipe(gulp.dest("dist"));
+  }
+));
+
+//
+// Build a BETA
+//
+gulp.task("build-beta", gulp.series("build", function() {
+  gulp
+    .src("src/manifest.json")
+    .pipe(plugins.replaceTask(replaceOptsBeta))
+    .pipe(gulp.dest("build"));
+
+  gulp
+    .src(["build/**"])
+    .pipe(plugins.zip(distFilename + ".beta.zip"))
+    .pipe(gulp.dest("dist"));
+}));

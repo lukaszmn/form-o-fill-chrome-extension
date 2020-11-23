@@ -1,0 +1,10 @@
+{
+	"dependencies": {
+	  "graceful-fs": {
+		"version": "4.2.3"
+	  },
+	  "node-sass": {
+		"version": "4.14.1"
+	  }
+	}
+}
